@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         YouTube 优化
-// @description  自动设置 YouTube 视频分辨率、播放速度，添加网页全屏功能，整合到控制面板，支持自动隐藏。
+// @description  自动设置 YouTube 视频分辨率、播放速度，添加网页全屏功能，整合到控制面板，支持自动隐藏与收起。
 // @match        *://www.youtube.com/*
 // @grant        none
 // ==/UserScript==
@@ -41,9 +41,19 @@
         }
     }
 
+    function getYouTubeTheme() {
+        const isDark = document.documentElement.getAttribute('dark') === '' ||
+                       document.documentElement.getAttribute('dark') === 'true' ||
+                       document.documentElement.classList.contains('dark');
+        return isDark ? 'dark' : 'light';
+    }
+
     function toggleWebFullscreen() {
         const player = document.querySelector('.html5-video-player');
         if (!player) return;
+
+        const bgId = 'webfullscreen-bg';
+        let bg = document.getElementById(bgId);
 
         player.classList.toggle('webfullscreen');
 
@@ -55,9 +65,25 @@
             player.style.height = '100vh';
             player.style.zIndex = 9998;
             document.body.style.overflow = 'hidden';
+
+            if (!bg) {
+                bg = document.createElement('div');
+                bg.id = bgId;
+                bg.style.position = 'fixed';
+                bg.style.top = 0;
+                bg.style.left = 0;
+                bg.style.width = '100vw';
+                bg.style.height = '100vh';
+                bg.style.zIndex = 9997;
+                bg.style.backgroundColor = getYouTubeTheme() === 'dark' ? '#0f0f0f' : '#f9f9f9';
+                document.body.appendChild(bg);
+            }
+
+            window.dispatchEvent(new Event('resize'));
         } else {
             player.removeAttribute('style');
             document.body.style.overflow = '';
+            if (bg) bg.remove();
         }
     }
 
@@ -67,10 +93,20 @@
         const container = document.createElement('div');
         container.id = 'yt-settings-container';
         container.style.cssText = `
-            position: fixed; top: 10px; right: 10px; z-index: 9999;
-            background: rgba(255,255,255,0.95); padding: 10px; border-radius: 10px;
+            position: fixed; top: 10px; right: 0; z-index: 9999;
+            background: rgba(255,255,255,0.95); border-radius: 10px 0 0 10px;
             font-size: 14px; box-shadow: 0 0 5px rgba(0,0,0,0.2);
-            transition: opacity 0.3s; user-select: none;
+            transition: opacity 0.3s, transform 0.3s; user-select: none;
+            display: flex; flex-direction: row; align-items: stretch;
+        `;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 10px;
+            background: transparent;
         `;
 
         const qualityLabel = document.createElement('label');
@@ -108,21 +144,53 @@
         const fsButton = document.createElement('button');
         fsButton.textContent = '网页全屏';
         fsButton.style.cssText = `
-            margin-left: 10px; padding: 3px 6px;
-            font-size: 12px; background: #ff5c5c; color: white;
+            padding: 3px 6px; font-size: 12px; background: #ff5c5c; color: white;
             border: none; border-radius: 4px; cursor: pointer;
         `;
         fsButton.onclick = toggleWebFullscreen;
 
-        container.appendChild(qualityLabel);
-        container.appendChild(qualitySelect);
-        container.appendChild(speedLabel);
-        container.appendChild(speedSelect);
-        container.appendChild(fsButton);
+        const rightControls = document.createElement('div');
+        rightControls.style.cssText = `
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 6px;
+            border-left: 1px solid #aaa;
+            background: transparent;
+            transition: all 0.3s;
+        `;
 
+        const toggleBtn = document.createElement('button');
+        toggleBtn.textContent = '▶';
+        toggleBtn.style.cssText = `
+            border: none; background: none; cursor: pointer;
+            font-size: 16px; padding: 2px 4px; margin: 0;
+        `;
+        toggleBtn.title = '收起面板';
+
+        let collapsed = false;
+        toggleBtn.onclick = () => {
+            collapsed = !collapsed;
+            panel.style.display = collapsed ? 'none' : 'flex';
+            toggleBtn.textContent = collapsed ? '◀' : '▶';
+            toggleBtn.title = collapsed ? '展开面板' : '收起面板';
+
+            rightControls.style.borderLeft = collapsed ? 'none' : '1px solid #aaa';
+            rightControls.style.padding = collapsed ? '0 4px' : '0 6px';
+        };
+
+        panel.appendChild(qualityLabel);
+        panel.appendChild(qualitySelect);
+        panel.appendChild(speedLabel);
+        panel.appendChild(speedSelect);
+        panel.appendChild(fsButton);
+
+        rightControls.appendChild(toggleBtn);
+
+        container.appendChild(panel);
+        container.appendChild(rightControls);
         document.body.appendChild(container);
 
-        // 自动隐藏控制面板
         let hideTimer;
         const show = () => {
             container.style.opacity = '1';
