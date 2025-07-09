@@ -204,6 +204,71 @@
         });
     }
 
+    function setupRecommendationFilter() {
+        const getSettings = () => ({
+            enabled: localStorage.getItem('yt-filter-enabled') === 'true',
+            filterHome: localStorage.getItem('yt-filter-home') === 'true',
+            filterRelated: localStorage.getItem('yt-filter-related') === 'true',
+            filterKeywords: localStorage.getItem('yt-filter-keywords') === 'true',
+            filterProgress: localStorage.getItem('yt-filter-progress') === 'true',
+            progressThreshold: parseInt(localStorage.getItem('yt-filter-progress-threshold')) || 90,
+            keywords: JSON.parse(localStorage.getItem('yt-filter-words') || '[]')
+        });
+
+        let hiddenCount = 0;
+
+        function containsKeyword(title, keywords) {
+            return keywords.some(keyword => {
+                return title.toLowerCase().includes(keyword.toLowerCase());
+            });
+        }
+
+        function getPlayedPercentage(item) {
+            const progressElem = item.querySelector('.ytd-thumbnail-overlay-resume-playback-renderer');
+            if (progressElem && progressElem.style.width) {
+                const match = progressElem.style.width.match(/([\d.]+)%/);
+                if (match) return parseFloat(match[1]);
+            }
+            return 0;
+        }
+
+        function filterHomeVideos() {
+            const settings = getSettings();
+            if (!settings.enabled || !settings.filterHome) return;
+
+            const items = document.querySelectorAll('ytd-rich-item-renderer:not([data-yt-filtered])');
+
+            items.forEach(item => {
+                const titleElem = item.querySelector('#video-title');
+                const title = titleElem?.textContent.trim() || '';
+                const playedPercent = getPlayedPercentage(item);
+
+                const matchedByKeyword = settings.filterKeywords && containsKeyword(title, settings.keywords);
+                const matchedByPlayed = settings.filterProgress && playedPercent >= settings.progressThreshold;
+
+                if (matchedByKeyword || matchedByPlayed) {
+                    item.style.display = 'none';
+                    item.setAttribute('data-yt-filtered', '1');
+                    hiddenCount++;
+                } else {
+                    item.setAttribute('data-yt-filtered', '0');
+                }
+            });
+        }
+
+        function observeHomePage() {
+            const target = document.querySelector('ytd-page-manager');
+            if (!target) return;
+
+            const observer = new MutationObserver(() => filterHomeVideos());
+            observer.observe(target, { childList: true, subtree: true });
+
+            filterHomeVideos();
+        }
+
+        observeHomePage();
+    }
+
     function createSettingsUI() {
         if (document.getElementById('yt-settings-container')) return;
 
@@ -378,7 +443,7 @@
             background: #f8f8f8;
         `;
 
-        const tabs = ['行为', '字幕'];
+        const tabs = ['行为', '过滤', '字幕'];
         const tabButtons = {};
         const tabContents = {};
 
@@ -514,6 +579,149 @@
                 enforceMutualExclusion(afqSwitch, maxqSwitch, vqSwitch);
             }
 
+            if (tab === '过滤') {
+                const filterSettings = document.createElement('div');
+                filterSettings.style.display = 'flex';
+                filterSettings.style.flexDirection = 'column';
+                filterSettings.style.gap = '10px';
+
+                function createToggle(labelText, key) {
+                    const container = document.createElement('label');
+                    container.style.cssText = `
+                        display: flex; justify-content: space-between; align-items: center;
+                        font-size: 14px;
+                    `;
+
+                    const label = document.createElement('span');
+                    label.textContent = labelText;
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.style.transform = 'scale(1.3)';
+                    checkbox.dataset.key = key;
+                    checkbox.checked = localStorage.getItem(key) === 'true';
+                    checkbox.addEventListener('change', (e) => {
+                        localStorage.setItem(key, checkbox.checked);
+                    });
+
+                    container.appendChild(label);
+                    container.appendChild(checkbox);
+                    return container;
+                }
+
+                filterSettings.appendChild(createToggle('过滤功能总开关', 'yt-filter-enabled'));
+                filterSettings.appendChild(createToggle('过滤首页推荐', 'yt-filter-home'));
+                filterSettings.appendChild(createToggle('过滤视频页相关推荐', 'yt-filter-related'));
+                filterSettings.appendChild(createToggle('关键词过滤', 'yt-filter-keywords'));
+
+                // 关键词部分
+                const keywordLabel = document.createElement('div');
+                keywordLabel.textContent = '屏蔽词（回车添加，点击删除）：';
+
+                const keywordBox = document.createElement('div');
+                keywordBox.style.cssText = `
+                    display: flex; flex-wrap: wrap; gap: 6px;
+                    border: 1px solid #ccc; padding: 6px; border-radius: 4px;
+                    min-height: 36px;
+                `;
+
+                const keywordInput = document.createElement('input');
+                keywordInput.type = 'text';
+                keywordInput.placeholder = '输入关键词后回车';
+                keywordInput.style.cssText = `
+                    border: none; outline: none; flex-grow: 1;
+                    min-width: 100px;
+                `;
+
+                keywordBox.appendChild(keywordInput);
+
+                function renderKeywords() {
+                    // 清除旧词块（保留输入框）
+                    [...keywordBox.querySelectorAll('.keyword-chip')].forEach(el => el.remove());
+
+                    const keywords = JSON.parse(localStorage.getItem('yt-filter-words') || '[]');
+                    keywords.forEach(word => {
+                        const chip = document.createElement('span');
+                        chip.className = 'keyword-chip';
+                        chip.style.cssText = `
+                            display: inline-flex; align-items: center; padding: 2px 6px;
+                            background: #eee; border-radius: 4px;
+                            font-size: 13px; gap: 4px;
+                        `;
+
+                        const wordText = document.createElement('span');
+                        wordText.textContent = word;
+
+                        const closeBtn = document.createElement('span');
+                        closeBtn.textContent = '×';
+                        closeBtn.style.cssText = 'cursor: pointer; color: #c00;';
+                        closeBtn.addEventListener('click', () => {
+                            const newWords = keywords.filter(k => k !== word);
+                            localStorage.setItem('yt-filter-words', JSON.stringify(newWords));
+                            renderKeywords();
+                        });
+
+                        chip.appendChild(wordText);
+                        chip.appendChild(closeBtn);
+                        keywordBox.insertBefore(chip, keywordInput);
+                    });
+                }
+
+                keywordInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        const value = keywordInput.value.trim();
+                        if (value) {
+                            let keywords = JSON.parse(localStorage.getItem('yt-filter-words') || '[]');
+                            if (!keywords.includes(value)) {
+                                keywords.push(value);
+                                localStorage.setItem('yt-filter-words', JSON.stringify(keywords));
+                                renderKeywords();
+                            }
+                            keywordInput.value = '';
+                        }
+                    }
+                });
+
+                renderKeywords();
+
+                filterSettings.appendChild(keywordLabel);
+                filterSettings.appendChild(keywordBox);
+
+                // 播放进度过滤
+                const progressToggle = createToggle('播放进度过滤', 'yt-filter-progress');
+                filterSettings.appendChild(progressToggle);
+
+                const progressLine = document.createElement('div');
+                progressLine.style.display = 'flex';
+                progressLine.style.alignItems = 'center';
+
+                const progressInputLabel = document.createElement('label');
+                progressInputLabel.textContent = '过滤播放进度大于：';
+
+                const progressInput = document.createElement('input');
+                progressInput.type = 'number';
+                progressInput.min = '1';
+                progressInput.max = '100';
+                progressInput.value = localStorage.getItem('yt-filter-progress-threshold') || '90';
+                progressInput.style.cssText = 'width: 60px; margin-left: 6px;';
+                progressInput.addEventListener('input', () => {
+                    const val = Math.min(100, Math.max(1, parseInt(progressInput.value)));
+                    localStorage.setItem('yt-filter-progress-threshold', val);
+                });
+
+                const percentSign = document.createElement('span');
+                percentSign.textContent = '%';
+                percentSign.style.marginLeft = '6px';
+
+                progressLine.appendChild(progressInputLabel);
+                progressLine.appendChild(progressInput);
+                progressLine.appendChild(percentSign);
+
+                filterSettings.appendChild(progressLine);
+
+                content.appendChild(filterSettings);
+            }
+
             if (tab === '字幕') {
                 const subLabel = document.createElement('p');
                 subLabel.textContent = '字幕设置占位：未来可以在这里添加语言、样式等。';
@@ -549,6 +757,7 @@
             setTimeout(() => {
                 applyAllSettings();
                 createSettingsUI();
+                setupRecommendationFilter();
             }, 1000);
         };
         window.addEventListener('yt-navigate-finish', apply);
