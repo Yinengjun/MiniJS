@@ -445,7 +445,7 @@
                 afqLabel.appendChild(afqSwitch);
 
                 const afqNote = document.createElement('div');
-                afqNote.textContent = '当视频全屏时更改为指定画质';
+                afqNote.textContent = '当视频全屏时更改为指定画质，与其它全屏画质设置互斥';
                 afqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
                 const fqLabel = document.createElement('label');
@@ -482,7 +482,7 @@
                 maxqLabel.appendChild(maxqSwitch);
 
                 const maxqNote = document.createElement('div');
-                maxqNote.textContent = '当视频全屏时设置为屏幕可显示的最高画质，与自动全屏画质二选一';
+                maxqNote.textContent = '当视频全屏时设置为屏幕可显示的最高画质，与其它全屏画质设置互斥';
                 maxqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
                 const vqLabel = document.createElement('label');
@@ -498,7 +498,7 @@
                 vqLabel.appendChild(vqSwitch);
 
                 const vqNote = document.createElement('div');
-                vqNote.textContent = '当视频全屏时切换为当前视频提供的最高清晰度，与其它画质设置互斥';
+                vqNote.textContent = '当视频全屏时切换为当前视频提供的最高清晰度，与其它全屏画质设置互斥';
                 vqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
                 content.appendChild(awfLabel);
