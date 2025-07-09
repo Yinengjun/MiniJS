@@ -122,6 +122,88 @@
         }
     }
 
+    function setupFullscreenQualitySwitcher() {
+        const video = document.querySelector('video');
+        if (!video) return;
+
+        let prevQuality = null;
+
+        document.addEventListener('fullscreenchange', () => {
+            const isFullscreen = document.fullscreenElement !== null;
+            const ytPlayer = document.querySelector('ytd-player')?.getPlayer?.();
+            if (!ytPlayer) return;
+
+            const autoSwitch = localStorage.getItem('yt-auto-fullscreen-quality') === 'true';
+            const maxSwitch = localStorage.getItem('yt-fullscreen-max-quality') === 'true';
+            const videoMaxSwitch = localStorage.getItem('yt-fullscreen-video-max-quality') === 'true';
+
+            if (!autoSwitch && !maxSwitch && !videoMaxSwitch) return;
+
+            if (isFullscreen) {
+                prevQuality = ytPlayer.getPlaybackQuality?.();
+
+                if (videoMaxSwitch) {
+                    const levels = ytPlayer.getAvailableQualityLevels?.();
+                    if (levels?.length > 0) {
+                        const best = levels[0]; // 通常为视频最高分辨率
+                        ytPlayer.setPlaybackQualityRange(best);
+                        ytPlayer.setPlaybackQuality(best);
+                        console.log(`[YouTube脚本] 进入全屏：使用视频最高画质 ${best}`);
+                    }
+                } else if (maxSwitch) {
+                    const playerRect = document.querySelector('.html5-video-player')?.getBoundingClientRect?.();
+                    if (playerRect) {
+                        const width = playerRect.width * window.devicePixelRatio;
+                        const height = playerRect.height * window.devicePixelRatio;
+                        const targetHeight = Math.max(width, height); // 通常只看高即可
+
+                        const levels = ytPlayer.getAvailableQualityLevels?.();
+                        const matched = levels?.find(lv => {
+                            const h = parseInt(lv.replace(/\D/g, '')) || 0;
+                            return h <= targetHeight + 100; // 允许略大
+                        });
+
+                        if (matched) {
+                            ytPlayer.setPlaybackQualityRange(matched);
+                            ytPlayer.setPlaybackQuality(matched);
+                            console.log(`[YouTube脚本] 进入全屏：按屏幕尺寸选择画质 ${matched}`);
+                        }
+                    }
+                } else if (autoSwitch) {
+                    const fullscreenQuality = localStorage.getItem('yt-fullscreen-quality-value') || 'hd1080';
+                    ytPlayer.setPlaybackQualityRange(fullscreenQuality);
+                    ytPlayer.setPlaybackQuality(fullscreenQuality);
+                    console.log(`[YouTube脚本] 进入全屏：使用指定画质 ${fullscreenQuality}`);
+                }
+            } else {
+                // 退出全屏：恢复原画质
+                const restoreQuality = localStorage.getItem('yt-default-quality') || prevQuality;
+                if (restoreQuality && restoreQuality !== ytPlayer.getPlaybackQuality?.()) {
+                    ytPlayer.setPlaybackQualityRange(restoreQuality);
+                    ytPlayer.setPlaybackQuality(restoreQuality);
+                    console.log(`[YouTube脚本] 已退出全屏，画质恢复为 ${restoreQuality}`);
+                }
+            }
+
+        });
+    }
+
+    function enforceMutualExclusion(...switches) {
+        switches.forEach((sw, i) => {
+            sw.addEventListener('change', () => {
+                if (sw.checked) {
+                    switches.forEach((other, j) => {
+                        if (i !== j) {
+                            other.checked = false;
+                            localStorage.setItem(other.dataset.key, 'false');
+                        }
+                    });
+                }
+                localStorage.setItem(sw.dataset.key, sw.checked);
+            });
+        });
+    }
+
     function createSettingsUI() {
         if (document.getElementById('yt-settings-container')) return;
 
@@ -267,7 +349,26 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            position: relative;
         `;
+
+        // 添加关闭按钮 X
+        const closeX = document.createElement('button');
+        closeX.textContent = '×';
+        closeX.style.cssText = `
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            font-size: 18px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            color: #999;
+        `;
+        closeX.onclick = () => {
+            modal.style.display = 'none';
+        };
+        dialog.appendChild(closeX);
 
         // Tab Header
         const tabHeader = document.createElement('div');
@@ -306,10 +407,12 @@
                 const config = {
                     autoWebFullscreen: localStorage.getItem('yt-auto-webfullscreen') === 'true',
                     autoFullscreenQuality: localStorage.getItem('yt-auto-fullscreen-quality') === 'true',
-                    fullscreenQuality: localStorage.getItem('yt-fullscreen-quality-value') || defaultQuality,
+                    fullscreenQuality: localStorage.getItem('yt-fullscreen-quality-value') || 'hd1080',
                 };
 
-                // 自动网页全屏
+                config.fullscreenMaxQuality = localStorage.getItem('yt-fullscreen-max-quality') === 'true';
+                config.fullscreenVideoMaxQuality = localStorage.getItem('yt-fullscreen-video-max-quality') === 'true';
+
                 const awfLabel = document.createElement('label');
                 awfLabel.textContent = '自动网页全屏 ';
                 awfLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
@@ -329,7 +432,6 @@
                 awfNote.textContent = '打开视频页面后自动网页全屏，播放结束后自动退出网页全屏';
                 awfNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
-                // 自动全屏画质
                 const afqLabel = document.createElement('label');
                 afqLabel.textContent = '自动全屏画质 ';
                 afqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
@@ -337,13 +439,15 @@
                 const afqSwitch = document.createElement('input');
                 afqSwitch.type = 'checkbox';
                 afqSwitch.checked = config.autoFullscreenQuality;
+                afqSwitch.id = 'auto-fullscreen-quality-switch';
+                afqSwitch.dataset.key = 'yt-auto-fullscreen-quality';
+
                 afqLabel.appendChild(afqSwitch);
 
                 const afqNote = document.createElement('div');
                 afqNote.textContent = '当视频全屏时更改为指定画质';
                 afqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
-                // 全屏画质
                 const fqLabel = document.createElement('label');
                 fqLabel.textContent = '全屏画质：';
                 fqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
@@ -359,25 +463,58 @@
                     fqSelect.appendChild(option);
                 }
 
+                fqSelect.addEventListener('change', () => {
+                    localStorage.setItem('yt-fullscreen-quality-value', fqSelect.value);
+                });
+
                 fqLabel.appendChild(fqSelect);
 
-                // 附加到容器
+                const maxqLabel = document.createElement('label');
+                maxqLabel.textContent = '全屏自适应最高画质 ';
+                maxqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
+
+                const maxqSwitch = document.createElement('input');
+                maxqSwitch.type = 'checkbox';
+                maxqSwitch.checked = config.fullscreenMaxQuality;
+                maxqSwitch.id = 'fullscreen-max-quality-switch';
+                maxqSwitch.dataset.key = 'yt-fullscreen-max-quality';
+
+                maxqLabel.appendChild(maxqSwitch);
+
+                const maxqNote = document.createElement('div');
+                maxqNote.textContent = '当视频全屏时设置为屏幕可显示的最高画质，与自动全屏画质二选一';
+                maxqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
+
+                const vqLabel = document.createElement('label');
+                vqLabel.textContent = '全屏自动视频最高画质 ';
+                vqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
+
+                const vqSwitch = document.createElement('input');
+                vqSwitch.type = 'checkbox';
+                vqSwitch.checked = config.fullscreenVideoMaxQuality;
+                vqSwitch.id = 'fullscreen-video-max-quality-switch';
+                vqSwitch.dataset.key = 'yt-fullscreen-video-max-quality';
+
+                vqLabel.appendChild(vqSwitch);
+
+                const vqNote = document.createElement('div');
+                vqNote.textContent = '当视频全屏时切换为当前视频提供的最高清晰度，与其它画质设置互斥';
+                vqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
+
                 content.appendChild(awfLabel);
                 content.appendChild(awfNote);
                 content.appendChild(afqLabel);
                 content.appendChild(afqNote);
                 content.appendChild(fqLabel);
+                content.appendChild(maxqLabel);
+                content.appendChild(maxqNote);
+                content.appendChild(vqLabel);
+                content.appendChild(vqNote);
 
-                // 保存方法需要读取这些控件
-                content.dataset.settingsType = 'behavior';
-                content.dataset.refs = JSON.stringify({
-                    autoWebFullscreenId: awfSwitch,
-                    autoFullscreenQualityId: afqSwitch,
-                    fullscreenQualityId: fqSelect
-                });
+                enforceMutualExclusion(afqSwitch, maxqSwitch, vqSwitch);
             }
-            
-            else if (tab === '字幕') {
+
+            if (tab === '字幕') {
                 const subLabel = document.createElement('p');
                 subLabel.textContent = '字幕设置占位：未来可以在这里添加语言、样式等。';
                 content.appendChild(subLabel);
@@ -386,54 +523,6 @@
             dialog.appendChild(content);
             tabContents[tab] = content;
         });
-
-        // Footer Buttons
-        const footer = document.createElement('div');
-        footer.style.cssText = `
-            padding: 10px;
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            border-top: 1px solid #ddd;
-            background: #f9f9f9;
-        `;
-
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = '关闭';
-        closeBtn.style.cssText = `
-            padding: 5px 12px;
-            background: #bbb; color: white;
-            border: none; border-radius: 4px; cursor: pointer;
-        `;
-        closeBtn.onclick = () => {
-            modal.style.display = 'none';
-        };
-
-        const saveBtn = document.createElement('button');
-        saveBtn.textContent = '保存设置';
-        saveBtn.style.cssText = `
-            padding: 5px 12px;
-            background: #4caf50; color: white;
-            border: none; border-radius: 4px; cursor: pointer;
-        `;
-
-        saveBtn.onclick = () => {
-            try {
-                const awf = modal.querySelector('#auto-webfullscreen-switch').checked;
-                const afq = modal.querySelector('#auto-fullscreen-quality-switch').checked;
-                const fq = modal.querySelector('#fullscreen-quality-select').value;
-
-                localStorage.setItem('yt-auto-webfullscreen', awf);
-                localStorage.setItem('yt-auto-fullscreen-quality', afq);
-                localStorage.setItem('yt-fullscreen-quality-value', fq);
-            } catch (e) {
-                console.warn('保存行为设置失败:', e);
-            }
-        };
-
-        footer.appendChild(closeBtn);
-        footer.appendChild(saveBtn);
-        dialog.appendChild(footer);
 
         modal.appendChild(dialog);
         document.body.appendChild(modal);
@@ -452,6 +541,7 @@
         setVideoQuality(defaultQuality);
         setPlaybackSpeed(defaultSpeed);
         tryAutoWebFullscreen();
+        setupFullscreenQualitySwitcher();
     }
 
     function observeNavigation() {
