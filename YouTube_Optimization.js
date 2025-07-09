@@ -2,7 +2,7 @@
 // @name         YouTube 优化
 // @description  自动设置 YouTube 视频分辨率、播放速度，添加网页全屏功能，整合到控制面板，支持自动隐藏与收起。
 // @match        *://www.youtube.com/*
-// @grant        none
+// @grant        GM_registerMenuCommand
 // ==/UserScript==
 
 (function () {
@@ -84,6 +84,41 @@
             player.removeAttribute('style');
             document.body.style.overflow = '';
             if (bg) bg.remove();
+        }
+    }
+
+    function isVideoPage() {
+        return location.href.includes('watch?v=');
+    }
+
+    function setupVideoEndListener() {
+        const video = document.querySelector('video');
+        if (!video) return;
+
+        video.addEventListener('ended', () => {
+            const player = document.querySelector('.html5-video-player.webfullscreen');
+            if (player) {
+                toggleWebFullscreen();
+            }
+        });
+    }
+
+    function tryAutoWebFullscreen() {
+        const autoWebFullscreen = localStorage.getItem('yt-auto-webfullscreen') === 'true';
+        if (!autoWebFullscreen) return;
+
+        if (isVideoPage()) {
+            const player = document.querySelector('.html5-video-player');
+            if (player && !player.classList.contains('webfullscreen')) {
+                toggleWebFullscreen();
+            }
+            setupVideoEndListener();  // 监听播放完毕事件，自动退出网页全屏
+        } else {
+            // 不是视频页，确保退出网页全屏
+            const player = document.querySelector('.html5-video-player.webfullscreen');
+            if (player) {
+                toggleWebFullscreen();
+            }
         }
     }
 
@@ -207,9 +242,216 @@
         show();
     }
 
+    function showSettingsModal() {
+        console.log('显示设置面板');
+        if (document.getElementById('yt-settings-modal')) {
+            document.getElementById('yt-settings-modal').style.display = 'flex';
+            return;
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'yt-settings-modal';
+        modal.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;
+            z-index: 10000;
+        `;
+
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            width: 500px; max-width: 90%;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            font-size: 14px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        `;
+
+        // Tab Header
+        const tabHeader = document.createElement('div');
+        tabHeader.style.cssText = `
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            background: #f8f8f8;
+        `;
+
+        const tabs = ['行为', '字幕'];
+        const tabButtons = {};
+        const tabContents = {};
+
+        tabs.forEach(tab => {
+            const btn = document.createElement('button');
+            btn.textContent = tab;
+            btn.style.cssText = `
+                flex: 1; padding: 10px; background: none; border: none;
+                border-bottom: 2px solid transparent; cursor: pointer;
+            `;
+            btn.addEventListener('click', () => switchTab(tab));
+            tabHeader.appendChild(btn);
+            tabButtons[tab] = btn;
+        });
+
+        dialog.appendChild(tabHeader);
+
+        tabs.forEach(tab => {
+            const content = document.createElement('div');
+            content.style.cssText = `
+                padding: 15px;
+                display: none;
+            `;
+
+            if (tab === '行为') {
+                const config = {
+                    autoWebFullscreen: localStorage.getItem('yt-auto-webfullscreen') === 'true',
+                    autoFullscreenQuality: localStorage.getItem('yt-auto-fullscreen-quality') === 'true',
+                    fullscreenQuality: localStorage.getItem('yt-fullscreen-quality-value') || defaultQuality,
+                };
+
+                // 自动网页全屏
+                const awfLabel = document.createElement('label');
+                awfLabel.textContent = '自动网页全屏 ';
+                awfLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
+
+                const awfSwitch = document.createElement('input');
+                awfSwitch.type = 'checkbox';
+                awfSwitch.checked = config.autoWebFullscreen;
+                awfSwitch.id = 'auto-webfullscreen-switch';
+
+                awfSwitch.addEventListener('change', () => {
+                    localStorage.setItem('yt-auto-webfullscreen', awfSwitch.checked);
+                });
+
+                awfLabel.appendChild(awfSwitch);
+
+                const awfNote = document.createElement('div');
+                awfNote.textContent = '打开视频页面后自动网页全屏，播放结束后自动退出网页全屏';
+                awfNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
+
+                // 自动全屏画质
+                const afqLabel = document.createElement('label');
+                afqLabel.textContent = '自动全屏画质 ';
+                afqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
+
+                const afqSwitch = document.createElement('input');
+                afqSwitch.type = 'checkbox';
+                afqSwitch.checked = config.autoFullscreenQuality;
+                afqLabel.appendChild(afqSwitch);
+
+                const afqNote = document.createElement('div');
+                afqNote.textContent = '当视频全屏时更改为指定画质';
+                afqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
+
+                // 全屏画质
+                const fqLabel = document.createElement('label');
+                fqLabel.textContent = '全屏画质：';
+                fqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
+
+                const fqSelect = document.createElement('select');
+                fqSelect.id = 'fullscreen-quality-select';
+
+                for (const [key, val] of Object.entries(qualityMap)) {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = val;
+                    if (key === config.fullscreenQuality) option.selected = true;
+                    fqSelect.appendChild(option);
+                }
+
+                fqLabel.appendChild(fqSelect);
+
+                // 附加到容器
+                content.appendChild(awfLabel);
+                content.appendChild(awfNote);
+                content.appendChild(afqLabel);
+                content.appendChild(afqNote);
+                content.appendChild(fqLabel);
+
+                // 保存方法需要读取这些控件
+                content.dataset.settingsType = 'behavior';
+                content.dataset.refs = JSON.stringify({
+                    autoWebFullscreenId: awfSwitch,
+                    autoFullscreenQualityId: afqSwitch,
+                    fullscreenQualityId: fqSelect
+                });
+            }
+            
+            else if (tab === '字幕') {
+                const subLabel = document.createElement('p');
+                subLabel.textContent = '字幕设置占位：未来可以在这里添加语言、样式等。';
+                content.appendChild(subLabel);
+            }
+
+            dialog.appendChild(content);
+            tabContents[tab] = content;
+        });
+
+        // Footer Buttons
+        const footer = document.createElement('div');
+        footer.style.cssText = `
+            padding: 10px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            border-top: 1px solid #ddd;
+            background: #f9f9f9;
+        `;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '关闭';
+        closeBtn.style.cssText = `
+            padding: 5px 12px;
+            background: #bbb; color: white;
+            border: none; border-radius: 4px; cursor: pointer;
+        `;
+        closeBtn.onclick = () => {
+            modal.style.display = 'none';
+        };
+
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = '保存设置';
+        saveBtn.style.cssText = `
+            padding: 5px 12px;
+            background: #4caf50; color: white;
+            border: none; border-radius: 4px; cursor: pointer;
+        `;
+
+        saveBtn.onclick = () => {
+            try {
+                const awf = modal.querySelector('#auto-webfullscreen-switch').checked;
+                const afq = modal.querySelector('#auto-fullscreen-quality-switch').checked;
+                const fq = modal.querySelector('#fullscreen-quality-select').value;
+
+                localStorage.setItem('yt-auto-webfullscreen', awf);
+                localStorage.setItem('yt-auto-fullscreen-quality', afq);
+                localStorage.setItem('yt-fullscreen-quality-value', fq);
+            } catch (e) {
+                console.warn('保存行为设置失败:', e);
+            }
+        };
+
+        footer.appendChild(closeBtn);
+        footer.appendChild(saveBtn);
+        dialog.appendChild(footer);
+
+        modal.appendChild(dialog);
+        document.body.appendChild(modal);
+
+        function switchTab(tab) {
+            tabs.forEach(t => {
+                tabButtons[t].style.borderBottom = t === tab ? '2px solid #2196f3' : '2px solid transparent';
+                tabContents[t].style.display = t === tab ? 'block' : 'none';
+            });
+        }
+
+        switchTab('行为');
+    }
+
     function applyAllSettings() {
         setVideoQuality(defaultQuality);
         setPlaybackSpeed(defaultSpeed);
+        tryAutoWebFullscreen();
     }
 
     function observeNavigation() {
@@ -222,6 +464,10 @@
         window.addEventListener('yt-navigate-finish', apply);
         apply();
     }
+
+    GM_registerMenuCommand('打开设置面板', () => {
+        showSettingsModal();
+    });
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
