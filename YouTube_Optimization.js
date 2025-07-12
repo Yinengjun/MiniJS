@@ -443,7 +443,7 @@
             background: #f8f8f8;
         `;
 
-        const tabs = ['行为', '过滤', '字幕'];
+        const tabs = ['行为', '过滤', '字幕', '快捷键'];
         const tabButtons = {};
         const tabContents = {};
 
@@ -728,6 +728,91 @@
                 content.appendChild(subLabel);
             }
 
+            if (tab === '快捷键') {
+                const hotkeySettings = document.createElement('div');
+                hotkeySettings.style.display = 'flex';
+                hotkeySettings.style.flexDirection = 'column';
+                hotkeySettings.style.gap = '12px';
+
+                const hotkeyOptions = [
+                    {
+                        key: 'webfullscreen',
+                        label: '切换网页全屏',
+                        defaultKey: 'w',
+                        note: '建议使用 W 键'
+                    },
+                    {
+                        key: 'open-settings',
+                        label: '打开设置面板',
+                        defaultKey: 's',
+                        note: '使用 Ctrl+Shift+S 触发'
+                    },
+                    {
+                        key: 'increase-speed',
+                        label: '播放速度切换（1x/2x/4x）',
+                        defaultKey: 'x',
+                        note: '循环加速'
+                    },
+                    {
+                        key: 'toggle-subtitle',
+                        label: '开关字幕',
+                        defaultKey: 'c',
+                        note: '字幕按钮快捷开关'
+                    },
+                    {
+                        key: 'show-stats',
+                        label: '显示详细统计信息',
+                        defaultKey: 'd',
+                        note: '模拟 Ctrl+Shift+Alt+D'
+                    }
+                ];
+
+                hotkeyOptions.forEach(opt => {
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+
+                    const enable = document.createElement('input');
+                    enable.type = 'checkbox';
+                    enable.checked = localStorage.getItem(`yt-hotkey-toggle-${opt.key}`) === 'true';
+                    enable.addEventListener('change', () => {
+                        localStorage.setItem(`yt-hotkey-toggle-${opt.key}`, enable.checked);
+                    });
+
+                    const label = document.createElement('label');
+                    label.textContent = opt.label;
+                    label.style.flex = '1';
+
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.maxLength = 1;
+                    input.style.cssText = 'width: 30px; text-align: center;';
+                    input.value = localStorage.getItem(`yt-hotkey-key-${opt.key}`) || opt.defaultKey;
+
+                    input.addEventListener('input', () => {
+                        const val = input.value.toLowerCase().trim();
+                        if (/^[a-z]$/.test(val)) {
+                            localStorage.setItem(`yt-hotkey-key-${opt.key}`, val);
+                        } else {
+                            input.value = '';
+                            localStorage.removeItem(`yt-hotkey-key-${opt.key}`);
+                        }
+                    });
+
+                    const note = document.createElement('span');
+                    note.textContent = opt.note;
+                    note.style.fontSize = '12px';
+                    note.style.color = '#888';
+
+                    row.appendChild(enable);
+                    row.appendChild(label);
+                    row.appendChild(input);
+                    hotkeySettings.appendChild(row);
+                    hotkeySettings.appendChild(note);
+                });
+
+                content.appendChild(hotkeySettings);
+            }
+
             dialog.appendChild(content);
             tabContents[tab] = content;
         });
@@ -770,8 +855,78 @@
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
+            const modal = document.getElementById('yt-settings-modal');
+            if (modal && modal.style.display !== 'none') {
+                modal.style.display = 'none';
+                return;
+            }
+
             const player = document.querySelector('.html5-video-player.webfullscreen');
-            if (player) toggleWebFullscreen();
+            if (player) {
+                toggleWebFullscreen();
+                return;
+            }
+        }
+
+        const hotkeyActions = [
+            {
+                key: 'webfullscreen',
+                defaultKey: 'w',
+                action: () => toggleWebFullscreen(),
+            },
+            {
+                key: 'increase-speed',
+                defaultKey: 'x',
+                action: () => {
+                    const video = document.querySelector('video');
+                    if (video) {
+                        const current = video.playbackRate;
+                        const next = current >= 4 ? 1 : current * 2;
+                        video.playbackRate = next;
+                        console.log(`[快捷键] 播放速度设置为 ${next}x`);
+                    }
+                }
+            },
+            {
+                key: 'toggle-subtitle',
+                defaultKey: 'c',
+                action: () => {
+                    const btn = document.querySelector('.ytp-subtitles-button');
+                    if (btn) btn.click();
+                }
+            },
+            {
+                key: 'show-stats',
+                defaultKey: 'd',
+                action: () => {
+                    // 模拟 Ctrl+Shift+Alt+D
+                    const evt = new KeyboardEvent('keydown', {
+                        bubbles: true,
+                        cancelable: true,
+                        key: 'D',
+                        code: 'KeyD',
+                        ctrlKey: true,
+                        shiftKey: true,
+                        altKey: true
+                    });
+                    document.dispatchEvent(evt);
+                }
+            }
+        ];
+
+        hotkeyActions.forEach(({ key, defaultKey, action }) => {
+            const enabled = localStorage.getItem(`yt-hotkey-toggle-${key}`) === 'true';
+            const userKey = localStorage.getItem(`yt-hotkey-key-${key}`) || defaultKey;
+            if (enabled && e.key.toLowerCase() === userKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                action();
+            }
+        });
+
+        if (
+            localStorage.getItem('yt-hotkey-toggle-open-settings') === 'true' &&
+            e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's'
+        ) {
+            showSettingsModal();
         }
     });
 
