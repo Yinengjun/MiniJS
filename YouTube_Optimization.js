@@ -230,7 +230,9 @@
             filterKeywords: localStorage.getItem('yt-filter-keywords') === 'true',
             filterProgress: localStorage.getItem('yt-filter-progress') === 'true',
             progressThreshold: parseInt(localStorage.getItem('yt-filter-progress-threshold')) || 90,
-            keywords: JSON.parse(localStorage.getItem('yt-filter-words') || '[]')
+            keywords: JSON.parse(localStorage.getItem('yt-filter-words') || '[]'),
+            filterPublishTimeEnabled: localStorage.getItem('yt-filter-publish-time-enabled') === 'true',
+            publishTimeThreshold: parseInt(localStorage.getItem('yt-filter-publish-time-threshold')) || 12
         });
 
         let hiddenCount = 0;
@@ -250,9 +252,31 @@
             return 0;
         }
 
+        function getPublishTimeInMonths(item) {
+            const metadataItems = item.querySelectorAll('span.inline-metadata-item.style-scope.ytd-video-meta-block');
+
+            if (metadataItems.length < 2) {
+                return 0;
+            }
+
+            const textContent = metadataItems[1].textContent.trim();
+
+            const monthsMatch = textContent.match(/(\d+)\s*个月前/);
+            if (monthsMatch) {
+                return parseInt(monthsMatch[1]);
+            }
+
+            const yearsMatch = textContent.match(/(\d+)\s*年前/);
+            if (yearsMatch) {
+                return parseInt(yearsMatch[1]) * 12; // 转换为月
+            }
+
+            return 0;
+        }
+
         function filterHomeVideos() {
             const settings = getSettings();
-            if (!settings.enabled || !settings.filterHome) return;
+            if (!settings.enabled || (!settings.filterHome && !settings.filterPublishTimeEnabled)) return;
 
             const items = document.querySelectorAll('ytd-rich-item-renderer:not([data-yt-filtered])');
 
@@ -260,11 +284,13 @@
                 const titleElem = item.querySelector('#video-title');
                 const title = titleElem?.textContent.trim() || '';
                 const playedPercent = getPlayedPercentage(item);
+                const publishTimeMonths = getPublishTimeInMonths(item);
 
                 const matchedByKeyword = settings.filterKeywords && containsKeyword(title, settings.keywords);
                 const matchedByPlayed = settings.filterProgress && playedPercent >= settings.progressThreshold;
+                const matchedByPublishTime = settings.filterPublishTimeEnabled && publishTimeMonths >= settings.publishTimeThreshold;
 
-                if (matchedByKeyword || matchedByPlayed) {
+                if (matchedByKeyword || matchedByPlayed || matchedByPublishTime) {
                     item.style.display = 'none';
                     item.setAttribute('data-yt-filtered', '1');
                     hiddenCount++;
@@ -767,6 +793,44 @@
                 filterSettings.appendChild(progressLine);
 
                 content.appendChild(filterSettings);
+
+                // 发布时间过滤
+                const publishTimeToggle = createToggle('发布时间过滤', 'yt-filter-publish-time-enabled');
+                filterSettings.appendChild(publishTimeToggle);
+
+                const publishTimeNote = document.createElement('div');
+                publishTimeNote.textContent = '仅支持中文界面下的发布时间（如“1个月前”）';
+                publishTimeNote.style.cssText = `
+                    font-size: 12px; color: #666; margin-left: 20px; margin-top: -5px;
+                `;
+                filterSettings.appendChild(publishTimeNote);
+
+                const publishTimeInputLine = document.createElement('div');
+                publishTimeInputLine.style.display = 'flex';
+                publishTimeInputLine.style.alignItems = 'center';
+
+                const publishTimeInputLabel = document.createElement('label');
+                publishTimeInputLabel.textContent = '发布时间大于等于：';
+
+                const publishTimeInput = document.createElement('input');
+                publishTimeInput.type = 'number';
+                publishTimeInput.min = '1';
+                publishTimeInput.value = localStorage.getItem('yt-filter-publish-time-threshold') || '12';
+                publishTimeInput.style.cssText = 'width: 60px; margin-left: 6px;';
+                publishTimeInput.addEventListener('input', () => {
+                    const val = Math.max(1, parseInt(publishTimeInput.value) || 1);
+                    localStorage.setItem('yt-filter-publish-time-threshold', val);
+                });
+
+                const monthsSign = document.createElement('span');
+                monthsSign.textContent = '月';
+                monthsSign.style.marginLeft = '6px';
+
+                publishTimeInputLine.appendChild(publishTimeInputLabel);
+                publishTimeInputLine.appendChild(publishTimeInput);
+                publishTimeInputLine.appendChild(monthsSign);
+
+                filterSettings.appendChild(publishTimeInputLine); 
             }
 
             if (tab === '字幕') {
