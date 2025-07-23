@@ -91,6 +91,24 @@
         return location.href.includes('watch?v=');
     }
 
+    function isShortsPage() {
+        return location.href.includes('/shorts/');
+    }
+
+    function applyShortsSpeed() {
+        const video = document.querySelector('video');
+        if (!video) return;
+
+        const shortsOneX = localStorage.getItem('yt-shorts-one-x-speed') === 'true';
+
+        if (isShortsPage() && shortsOneX) {
+            if (video.playbackRate !== 1) {
+                video.playbackRate = 1;
+                console.log('[YouTube脚本] Shorts 视频已设置为 1 倍速。');
+            }
+        }
+    }
+
     function setupVideoEndListener() {
         const video = document.querySelector('video');
         if (!video) return;
@@ -473,11 +491,13 @@
                     autoWebFullscreen: localStorage.getItem('yt-auto-webfullscreen') === 'true',
                     autoFullscreenQuality: localStorage.getItem('yt-auto-fullscreen-quality') === 'true',
                     fullscreenQuality: localStorage.getItem('yt-fullscreen-quality-value') || 'hd1080',
+                    shortsOneXSpeed: localStorage.getItem('yt-shorts-one-x-speed') === 'true',
                 };
 
                 config.fullscreenMaxQuality = localStorage.getItem('yt-fullscreen-max-quality') === 'true';
                 config.fullscreenVideoMaxQuality = localStorage.getItem('yt-fullscreen-video-max-quality') === 'true';
 
+                // 自动网页全屏 UI
                 const awfLabel = document.createElement('label');
                 awfLabel.textContent = '自动网页全屏 ';
                 awfLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
@@ -497,6 +517,7 @@
                 awfNote.textContent = '打开视频页面后自动网页全屏，播放结束后自动退出网页全屏';
                 awfNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
+                // 自动全屏画质 UI
                 const afqLabel = document.createElement('label');
                 afqLabel.textContent = '自动全屏画质 ';
                 afqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
@@ -513,6 +534,7 @@
                 afqNote.textContent = '当视频全屏时更改为指定画质，与其它全屏画质设置互斥';
                 afqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
+                // 全屏画质选择 UI
                 const fqLabel = document.createElement('label');
                 fqLabel.textContent = '全屏画质：';
                 fqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
@@ -534,6 +556,7 @@
 
                 fqLabel.appendChild(fqSelect);
 
+                // 全屏自适应最高画质 UI
                 const maxqLabel = document.createElement('label');
                 maxqLabel.textContent = '全屏自适应最高画质 ';
                 maxqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
@@ -550,6 +573,7 @@
                 maxqNote.textContent = '当视频全屏时设置为屏幕可显示的最高画质，与其它全屏画质设置互斥';
                 maxqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
+                // 全屏自动视频最高画质 UI
                 const vqLabel = document.createElement('label');
                 vqLabel.textContent = '全屏自动视频最高画质 ';
                 vqLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
@@ -566,6 +590,27 @@
                 vqNote.textContent = '当视频全屏时切换为当前视频提供的最高清晰度，与其它全屏画质设置互斥';
                 vqNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
+                // Shorts 始终 1 倍速 UI
+                const shortsSpeedLabel = document.createElement('label');
+                shortsSpeedLabel.textContent = 'Shorts 始终 1 倍速 ';
+                shortsSpeedLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
+
+                const shortsSpeedSwitch = document.createElement('input');
+                shortsSpeedSwitch.type = 'checkbox';
+                shortsSpeedSwitch.checked = config.shortsOneXSpeed;
+                shortsSpeedSwitch.id = 'shorts-one-x-speed-switch';
+
+                shortsSpeedSwitch.addEventListener('change', () => {
+                    localStorage.setItem('yt-shorts-one-x-speed', shortsSpeedSwitch.checked);
+                    applyShortsSpeed();
+                });
+
+                shortsSpeedLabel.appendChild(shortsSpeedSwitch);
+
+                const shortsSpeedNote = document.createElement('div');
+                shortsSpeedNote.textContent = '如果当前是 Shorts 视频，则始终强制设置为 1 倍速。';
+                shortsSpeedNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
+
                 content.appendChild(awfLabel);
                 content.appendChild(awfNote);
                 content.appendChild(afqLabel);
@@ -575,6 +620,8 @@
                 content.appendChild(maxqNote);
                 content.appendChild(vqLabel);
                 content.appendChild(vqNote);
+                content.appendChild(shortsSpeedLabel);
+                content.appendChild(shortsSpeedNote);
 
                 enforceMutualExclusion(afqSwitch, maxqSwitch, vqSwitch);
             }
@@ -835,6 +882,7 @@
         setPlaybackSpeed(defaultSpeed);
         tryAutoWebFullscreen();
         setupFullscreenQualitySwitcher();
+        applyShortsSpeed();
     }
 
     function observeNavigation() {
