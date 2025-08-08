@@ -24,6 +24,7 @@
     let defaultQuality = localStorage.getItem('yt-default-quality') || 'hd1080';
     let defaultSpeed = parseFloat(localStorage.getItem('yt-default-speed')) || 2;
 
+    // 设置视频画质
     function setVideoQuality(quality) {
         const ytPlayer = document.querySelector('ytd-player')?.getPlayer?.();
         if (ytPlayer && typeof ytPlayer.setPlaybackQuality === 'function') {
@@ -33,6 +34,7 @@
         }
     }
 
+    // 初始化视频倍速
     function setPlaybackSpeed(speed) {
         const video = document.querySelector('video');
         if (video) {
@@ -41,6 +43,7 @@
         }
     }
 
+    // 获取 YouTube 主题
     function getYouTubeTheme() {
         const isDark = document.documentElement.getAttribute('dark') === '' ||
                        document.documentElement.getAttribute('dark') === 'true' ||
@@ -48,6 +51,7 @@
         return isDark ? 'dark' : 'light';
     }
 
+    // 切换网页全屏
     function toggleWebFullscreen() {
         const player = document.querySelector('.html5-video-player');
         if (!player) return;
@@ -87,14 +91,17 @@
         }
     }
 
+    // 检查是否为视频页面
     function isVideoPage() {
         return location.href.includes('watch?v=');
     }
 
+    // 检查是否为 Shorts 页面
     function isShortsPage() {
         return location.href.includes('/shorts/');
     }
 
+    // 应用 Shorts 页面1倍速
     function applyShortsSpeed() {
         const video = document.querySelector('video');
         if (!video) return;
@@ -109,6 +116,7 @@
         }
     }
 
+    // 设置视频结束监听器
     function setupVideoEndListener() {
         const video = document.querySelector('video');
         if (!video) return;
@@ -121,6 +129,7 @@
         });
     }
 
+    // 尝试自动进入网页全屏
     function tryAutoWebFullscreen() {
         const autoWebFullscreen = localStorage.getItem('yt-auto-webfullscreen') === 'true';
         if (!autoWebFullscreen) return;
@@ -140,6 +149,7 @@
         }
     }
 
+    // 设置视频全屏画质
     function setupFullscreenQualitySwitcher() {
         const video = document.querySelector('video');
         if (!video) return;
@@ -206,6 +216,7 @@
         });
     }
 
+    // 确保互斥开关
     function enforceMutualExclusion(...switches) {
         switches.forEach((sw, i) => {
             sw.addEventListener('change', () => {
@@ -222,6 +233,7 @@
         });
     }
 
+    // 设置推荐过滤器
     function setupRecommendationFilter() {
         const getSettings = () => ({
             enabled: localStorage.getItem('yt-filter-enabled') === 'true',
@@ -237,69 +249,126 @@
 
         let hiddenCount = 0;
 
+        // 关键词匹配函数（输入：视频标题和关键词数组）
         function containsKeyword(title, keywords) {
             return keywords.some(keyword => {
                 return title.toLowerCase().includes(keyword.toLowerCase());
             });
         }
 
+        // 获取视频播放进度百分比
         function getPlayedPercentage(item) {
-            const progressElem = item.querySelector('.ytd-thumbnail-overlay-resume-playback-renderer');
+            // 尝试使用明确类名
+            const progressElem = item.querySelector('.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment');
             if (progressElem && progressElem.style.width) {
                 const match = progressElem.style.width.match(/([\d.]+)%/);
                 if (match) return parseFloat(match[1]);
             }
+
+            // 如果没有找到明确的类名，尝试使用通用方法
+            const aElem = item.querySelector('a');
+            if (!aElem) return 0;
+
+            const divs = aElem.querySelectorAll('div');
+            if (divs.length >= 2 && divs[1].firstElementChild) {
+                const fallbackElem = divs[1].firstElementChild;
+                const width = fallbackElem.style.width;
+                if (width) {
+                    const match = width.match(/([\d.]+)%/);
+                    if (match) return parseFloat(match[1]);
+                }
+            }
+
             return 0;
         }
 
+        // 获取视频发布时间（以月为单位）
         function getPublishTimeInMonths(item) {
-            const metadataItems = item.querySelectorAll('span.inline-metadata-item.style-scope.ytd-video-meta-block');
+            const allSpans = item.querySelectorAll('span');
+            let publishTimeText = '';
 
-            if (metadataItems.length < 2) {
-                return 0;
+            for (let i = 0; i < allSpans.length; i++) {
+                const span = allSpans[i];
+                if (span.textContent.trim() === '•') {
+                    const next = allSpans[i + 1];
+                    if (next) {
+                        publishTimeText = next.textContent.trim();
+                        break;
+                    }
+                }
             }
 
-            const textContent = metadataItems[1].textContent.trim();
+            if (!publishTimeText) return 0;
 
-            const monthsMatch = textContent.match(/(\d+)\s*个月前/);
+            const monthsMatch = publishTimeText.match(/(\d+)\s*个月前/);
             if (monthsMatch) {
                 return parseInt(monthsMatch[1]);
             }
 
-            const yearsMatch = textContent.match(/(\d+)\s*年前/);
+            const yearsMatch = publishTimeText.match(/(\d+)\s*年前/);
             if (yearsMatch) {
-                return parseInt(yearsMatch[1]) * 12; // 转换为月
+                return parseInt(yearsMatch[1]) * 12;
             }
 
             return 0;
         }
 
+        // 过滤首页视频
         function filterHomeVideos() {
+            // 获取用户设定，例如是否启用过滤、关键词、进度阈值等
             const settings = getSettings();
+            // 如果过滤功能未启用，或者既未启用首页过滤也未启用发布时间过滤，则退出函数
             if (!settings.enabled || (!settings.filterHome && !settings.filterPublishTimeEnabled)) return;
 
+            // 查询所有尚未被标记为“已过滤”的视频项（避免重复处理）
             const items = document.querySelectorAll('ytd-rich-item-renderer:not([data-yt-filtered])');
+            //logHomeVideoItemsInfo(items);
 
+            // 遍历每一个视频项，判断是否需要隐藏
             items.forEach(item => {
-                const titleElem = item.querySelector('#video-title');
-                const title = titleElem?.textContent.trim() || '';
+                // 获取视频标题元素
+                const title = item.querySelector('h3[title]')?.getAttribute('title')?.trim() || '';
+
+                // 获取该视频的观看进度百分比（自定义函数 getPlayedPercentage）
                 const playedPercent = getPlayedPercentage(item);
+
+                // 获取该视频距今发布的时间（月数）（自定义函数 getPublishTimeInMonths）
                 const publishTimeMonths = getPublishTimeInMonths(item);
 
+                // 判断是否匹配关键词（如果启用了关键词过滤功能）
                 const matchedByKeyword = settings.filterKeywords && containsKeyword(title, settings.keywords);
-                const matchedByPlayed = settings.filterProgress && playedPercent >= settings.progressThreshold;
-                const matchedByPublishTime = settings.filterPublishTimeEnabled && publishTimeMonths >= settings.publishTimeThreshold;
+                if (matchedByKeyword) {
+                    console.log(`${title}\n关键词匹配过滤`);
+                }
 
+                // 判断是否满足观看进度阈值（如果启用了进度过滤功能）
+                const matchedByPlayed = settings.filterProgress && playedPercent >= settings.progressThreshold;
+                if (matchedByPlayed) {
+                    console.log(`${title}\n观看进度过滤：${playedPercent}%`);
+                }
+
+                // 判断是否满足发布时间阈值（如果启用了发布时间过滤功能）
+                const matchedByPublishTime = settings.filterPublishTimeEnabled && publishTimeMonths >= settings.publishTimeThreshold;
+                if (matchedByPublishTime) {
+                    console.log(`${title}\n发布时间过滤：${publishTimeMonths}个月前`);
+                }
+
+                // 如果符合任何一个过滤条件，就隐藏该视频项
                 if (matchedByKeyword || matchedByPlayed || matchedByPublishTime) {
+                    // 隐藏视频项
                     item.style.display = 'none';
+                    // 标记为已过滤，避免重复处理
                     item.setAttribute('data-yt-filtered', '1');
+                    // 增加已隐藏的视频计数（假设 hiddenCount 是在作用域内定义的变量）
                     hiddenCount++;
                 } else {
+                    // 如果未匹配任何条件，也标记为已处理但未过滤
                     item.setAttribute('data-yt-filtered', '0');
                 }
             });
         }
 
+        // 观察首页变化
         function observeHomePage() {
             const target = document.querySelector('ytd-page-manager');
             if (!target) return;
@@ -313,6 +382,7 @@
         observeHomePage();
     }
 
+    // 基本界面
     function createSettingsUI() {
         if (document.getElementById('yt-settings-container')) return;
 
@@ -336,7 +406,7 @@
         `;
 
         const qualityLabel = document.createElement('label');
-        qualityLabel.innerText = '默认画质：';
+        qualityLabel.innerText = '画质：';
         const qualitySelect = document.createElement('select');
         for (const key in qualityMap) {
             const option = document.createElement('option');
@@ -352,7 +422,7 @@
         };
 
         const speedLabel = document.createElement('label');
-        speedLabel.innerText = ' 默认倍速：';
+        speedLabel.innerText = '倍速：';
         const speedSelect = document.createElement('select');
         for (const s of speedOptions) {
             const option = document.createElement('option');
@@ -433,6 +503,7 @@
         show();
     }
 
+    // 设置界面
     function showSettingsModal() {
         console.log('显示设置面板');
         if (document.getElementById('yt-settings-modal')) {
@@ -708,6 +779,7 @@
 
                 keywordBox.appendChild(keywordInput);
 
+                // 渲染关键词
                 function renderKeywords() {
                     // 清除旧词块（保留输入框）
                     [...keywordBox.querySelectorAll('.keyword-chip')].forEach(el => el.remove());
@@ -740,6 +812,7 @@
                     });
                 }
 
+                // 监听输入框回车事件添加关键词
                 keywordInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') {
                         const value = keywordInput.value.trim();
@@ -931,6 +1004,7 @@
         modal.appendChild(dialog);
         document.body.appendChild(modal);
 
+        // 切换标签
         function switchTab(tab) {
             tabs.forEach(t => {
                 tabButtons[t].style.borderBottom = t === tab ? '2px solid #2196f3' : '2px solid transparent';
@@ -941,14 +1015,21 @@
         switchTab('行为');
     }
 
+    // 应用所有设置
     function applyAllSettings() {
+        // 设置视频质量
         setVideoQuality(defaultQuality);
+        // 设置播放速度
         setPlaybackSpeed(defaultSpeed);
+        // 设置网页全屏
         tryAutoWebFullscreen();
+        // 设置全屏画质切换
         setupFullscreenQualitySwitcher();
+        // 设置 Shorts 视频速度
         applyShortsSpeed();
     }
 
+    // 观察导航页面（延迟执行的初始化函数）
     function observeNavigation() {
         const apply = () => {
             setTimeout(() => {
@@ -961,10 +1042,59 @@
         apply();
     }
 
+/*     function observeNavigation() {
+        let debounceTimer = null;
+        let initialized = false; // 用于判断是否已初始化过 UI 和设置
+
+        // 防抖函数
+        function debounce(fn, delay = 300) {
+            return function(...args) {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
+
+        // 只需要执行一次的初始化逻辑
+        function initOnce() {
+            if (initialized) return;
+            initialized = true;
+
+            console.log('初始化设置和 UI...');
+            applyAllSettings();
+            createSettingsUI();
+        }
+
+        // 每次页面更新时执行的逻辑（推荐区过滤）
+        function handlePageUpdate() {
+            const mainContent = document.querySelector('#contents');
+            if (!mainContent) {
+                console.log('DOM 未就绪，等待...');
+                return;
+            }
+
+            initOnce(); // 首次加载时执行初始化
+            console.log('YouTube 推荐过滤');
+            setupRecommendationFilter();
+        }
+
+        const apply = debounce(handlePageUpdate, 500);
+
+        // 监听 YouTube 的导航完成事件
+        window.addEventListener('yt-navigate-finish', apply);
+
+        // 监听 DOM 变化（SPA 更新）
+        const observer = new MutationObserver(apply);
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // 首次加载时执行一次
+        apply();
+    } */
+
     GM_registerMenuCommand('打开设置面板', () => {
         showSettingsModal();
     });
 
+    // 监听键盘事件
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             const modal = document.getElementById('yt-settings-modal');
