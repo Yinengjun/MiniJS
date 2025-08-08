@@ -1,8 +1,11 @@
 // ==UserScript==
 // @name         YouTube 优化
 // @description  自动设置 YouTube 视频分辨率、播放速度，添加网页全屏功能，整合到控制面板，支持自动隐藏与收起。
+// @version      1.0.0
 // @match        *://www.youtube.com/*
 // @grant        GM_registerMenuCommand
+// @updateURL    https://raw.githubusercontent.com/Yinengjun/MiniJS/refs/heads/main/YouTube_Optimization.user.js
+// @downloadURL  https://raw.githubusercontent.com/Yinengjun/MiniJS/refs/heads/main/YouTube_Optimization.user.js
 // ==/UserScript==
 
 (function () {
