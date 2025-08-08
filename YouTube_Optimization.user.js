@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 优化
 // @description  自动设置 YouTube 视频分辨率、播放速度，添加网页全屏功能，整合到控制面板，支持自动隐藏与收起。
-// @version      1.0.0
+// @version      1.0.1
 // @match        *://www.youtube.com/*
 // @grant        GM_registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/Yinengjun/MiniJS/refs/heads/main/YouTube_Optimization.user.js
@@ -26,6 +26,12 @@
     const speedOptions = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 8, 10, 16];
     let defaultQuality = localStorage.getItem('yt-default-quality') || 'hd1080';
     let defaultSpeed = parseFloat(localStorage.getItem('yt-default-speed')) || 2;
+
+    const STORAGE_KEY_COLUMNS = 'yt_home_columns';
+    const STORAGE_KEY_ENABLED = 'yt_home_columns_enabled';  
+    const STORAGE_KEY_SLIDER_VISIBLE = 'yt_home_slider_visible';
+    const minColumns = 3;
+    const maxColumns = 8;
 
     // 设置视频画质
     function setVideoQuality(quality) {
@@ -385,6 +391,91 @@
         observeHomePage();
     }
 
+    // 
+    function applyColumnsStyle() {
+        const enabled = localStorage.getItem(STORAGE_KEY_ENABLED) === 'true';
+        if (!enabled) {
+            const styleTag = document.getElementById('yt-custom-columns-style');
+            if (styleTag) styleTag.remove();
+            return;
+        }
+        let styleTag = document.getElementById('yt-custom-columns-style');
+        if (!styleTag) {
+            styleTag = document.createElement('style');
+            styleTag.id = 'yt-custom-columns-style';
+            document.head.appendChild(styleTag);
+        }
+        const columns = parseInt(localStorage.getItem(STORAGE_KEY_COLUMNS)) || 5;
+        styleTag.textContent = `
+            ytd-rich-grid-renderer {
+                --ytd-rich-grid-items-per-row: ${columns} !important;
+            }
+        `;
+    }
+
+    // 
+    function createSlider() {
+        const enabled = localStorage.getItem(STORAGE_KEY_ENABLED) === 'true';
+        const sliderVisible = localStorage.getItem(STORAGE_KEY_SLIDER_VISIBLE) !== 'false';
+        if (!enabled || !sliderVisible) return;
+        if (document.getElementById('yt-columns-slider-container')) return;
+
+        const homeColumns = parseInt(localStorage.getItem(STORAGE_KEY_COLUMNS)) || 5;
+
+        const sliderContainer = document.createElement('div');
+        sliderContainer.id = 'yt-columns-slider-container';
+        sliderContainer.style.cssText = `
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.7);
+            padding: 8px;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            font-size: 14px;
+            box-sizing: border-box;
+        `;
+
+        const label = document.createElement('span');
+        label.textContent = `每行视频数: ${homeColumns}`;
+        label.style.marginRight = '10px';
+
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = minColumns;
+        slider.max = maxColumns;
+        slider.value = homeColumns;
+        slider.style.width = '300px';
+
+        slider.addEventListener('input', () => {
+            const val = parseInt(slider.value, 10);
+            label.textContent = `每行视频数: ${val}`;
+            localStorage.setItem(STORAGE_KEY_COLUMNS, val);
+            applyColumnsStyle();
+        });
+
+        sliderContainer.appendChild(label);
+        sliderContainer.appendChild(slider);
+        document.body.appendChild(sliderContainer);
+    }
+
+    // 
+    function removeSlider() {
+        const sliderContainer = document.getElementById('yt-columns-slider-container');
+        if (sliderContainer) sliderContainer.remove();
+    }
+
+    // 
+    function disableColumnsFeature() {
+        removeSlider();
+        const styleTag = document.getElementById('yt-custom-columns-style');
+        if (styleTag) styleTag.remove();
+    }
+
     // 基本界面
     function createSettingsUI() {
         if (document.getElementById('yt-settings-container')) return;
@@ -561,7 +652,7 @@
             background: #f8f8f8;
         `;
 
-        const tabs = ['行为', '过滤', '字幕', '快捷键'];
+        const tabs = ['行为', '过滤', '界面', '快捷键'];
         const tabButtons = {};
         const tabContents = {};
 
@@ -909,10 +1000,112 @@
                 filterSettings.appendChild(publishTimeInputLine); 
             }
 
-            if (tab === '字幕') {
-                const subLabel = document.createElement('p');
-                subLabel.textContent = '字幕设置占位：未来可以在这里添加语言、样式等。';
-                content.appendChild(subLabel);
+            if (tab === '界面') {
+                // 读取配置
+                const columnsEnabled = localStorage.getItem(STORAGE_KEY_ENABLED) === 'true';
+                const sliderVisibleOnPage = localStorage.getItem(STORAGE_KEY_SLIDER_VISIBLE) !== 'false'; // 默认true
+                const homeColumns = parseInt(localStorage.getItem(STORAGE_KEY_COLUMNS)) || 5;
+
+                // 横排视频数调节总开关
+                const enableLabel = document.createElement('label');
+                enableLabel.textContent = '横排视频数调节功能';
+                enableLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-weight: bold;';
+
+                const enableSwitch = document.createElement('input');
+                enableSwitch.type = 'checkbox';
+                enableSwitch.checked = columnsEnabled;
+                enableSwitch.id = 'home-columns-enable-switch';
+
+                enableLabel.appendChild(enableSwitch);
+
+                // 提示注入动态 CSS
+                const cssNote = document.createElement('div');
+                cssNote.textContent = '注入动态 CSS 样式，用于控制布局';
+                cssNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
+
+                // 页面切换横排视频数滑块开关
+                const sliderVisibleLabel = document.createElement('label');
+                sliderVisibleLabel.textContent = '页面切换横排视频数滑块';
+                sliderVisibleLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;';
+
+                const sliderVisibleSwitch = document.createElement('input');
+                sliderVisibleSwitch.type = 'checkbox';
+                sliderVisibleSwitch.checked = sliderVisibleOnPage;
+                sliderVisibleSwitch.id = 'home-slider-visible-switch';
+
+                sliderVisibleLabel.appendChild(sliderVisibleSwitch);
+
+                // 页面显示切换横排视频数滑块提示
+                const sliderVisibleNote = document.createElement('div');
+                sliderVisibleNote.textContent = '控制滑块在页面显示或隐藏，关闭后滑块仅在首页显示。';
+                sliderVisibleNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
+
+                // 每行视频数滑块及数值显示（始终显示，不随开关删除）
+                const columnsLabel = document.createElement('label');
+                columnsLabel.textContent = '每行视频数 ';
+                columnsLabel.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;';
+
+                const columnsSlider = document.createElement('input');
+                columnsSlider.type = 'range';
+                columnsSlider.min = minColumns;
+                columnsSlider.max = maxColumns;
+                columnsSlider.value = homeColumns;
+                columnsSlider.style.width = '100%';
+                columnsSlider.disabled = !columnsEnabled; // 根据启用状态禁用滑块
+                columnsSlider.style.opacity = columnsSlider.disabled ? '0.5' : '1.0';
+
+                const columnsValueLabel = document.createElement('span');
+                columnsValueLabel.textContent = homeColumns;
+                columnsValueLabel.style.marginLeft = '10px';
+
+                columnsSlider.addEventListener('input', () => {
+                    const val = parseInt(columnsSlider.value, 10);
+                    columnsValueLabel.textContent = val;
+                    localStorage.setItem(STORAGE_KEY_COLUMNS, val);
+                    applyColumnsStyle();
+                });
+
+                const columnsContainer = document.createElement('div');
+                columnsContainer.style.display = 'flex';
+                columnsContainer.style.alignItems = 'center';
+
+                columnsContainer.appendChild(columnsSlider);
+                columnsContainer.appendChild(columnsValueLabel);
+
+                // 事件绑定
+                enableSwitch.addEventListener('change', () => {
+                    localStorage.setItem(STORAGE_KEY_ENABLED, enableSwitch.checked);
+
+                    if (!enableSwitch.checked) {
+                        disableColumnsFeature();
+                        columnsSlider.disabled = true;
+                        columnsSlider.style.opacity = '0.5';
+                        removeSlider();
+                    } else {
+                        applyColumnsStyle();
+                        if (sliderVisibleSwitch.checked) createSlider();
+                        columnsSlider.disabled = false;
+                        columnsSlider.style.opacity = '1.0';
+                    }
+                });
+
+                sliderVisibleSwitch.addEventListener('change', () => {
+                    localStorage.setItem(STORAGE_KEY_SLIDER_VISIBLE, sliderVisibleSwitch.checked);
+
+                    if (sliderVisibleSwitch.checked && enableSwitch.checked) {
+                        createSlider();
+                    } else {
+                        removeSlider();
+                    }
+                });
+
+                // 依次追加元素到设置面板content
+                content.appendChild(enableLabel);
+                content.appendChild(cssNote);
+                content.appendChild(sliderVisibleLabel);
+                content.appendChild(sliderVisibleNote);
+                content.appendChild(columnsLabel);
+                content.appendChild(columnsContainer);
             }
 
             if (tab === '快捷键') {
@@ -1030,6 +1223,21 @@
         setupFullscreenQualitySwitcher();
         // 设置 Shorts 视频速度
         applyShortsSpeed();
+
+        if (window.location.pathname === '/') {
+            const enabled = localStorage.getItem(STORAGE_KEY_ENABLED) === 'true';
+            const sliderVisible = localStorage.getItem(STORAGE_KEY_SLIDER_VISIBLE) !== 'false';
+            if (enabled) {
+                applyColumnsStyle();
+                if (sliderVisible) createSlider();
+            } else {
+                disableColumnsFeature();
+            }
+        } else {
+            // 非首页不显示滑块，保留CSS根据是否启用决定
+            const sliderVisible = localStorage.getItem(STORAGE_KEY_SLIDER_VISIBLE) !== 'false';
+            if (!sliderVisible) removeSlider();
+        }
     }
 
     // 观察导航页面（延迟执行的初始化函数）
