@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 优化
 // @description  自动设置 YouTube 视频分辨率、播放速度，添加网页全屏功能，整合到控制面板，支持自动隐藏与收起。
-// @version      1.0.1
+// @version      1.0.2
 // @match        *://www.youtube.com/*
 // @grant        GM_registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/Yinengjun/MiniJS/refs/heads/main/YouTube_Optimization.user.js
@@ -391,7 +391,7 @@
         observeHomePage();
     }
 
-    // 
+    // 应用列样式
     function applyColumnsStyle() {
         const enabled = localStorage.getItem(STORAGE_KEY_ENABLED) === 'true';
         if (!enabled) {
@@ -413,7 +413,7 @@
         `;
     }
 
-    // 
+    // 创建滑块
     function createSlider() {
         const enabled = localStorage.getItem(STORAGE_KEY_ENABLED) === 'true';
         const sliderVisible = localStorage.getItem(STORAGE_KEY_SLIDER_VISIBLE) !== 'false';
@@ -463,13 +463,13 @@
         document.body.appendChild(sliderContainer);
     }
 
-    // 
+    // 移除首页列设置滑块
     function removeSlider() {
         const sliderContainer = document.getElementById('yt-columns-slider-container');
         if (sliderContainer) sliderContainer.remove();
     }
 
-    // 
+    // 禁用设置内列设置滑块功能
     function disableColumnsFeature() {
         removeSlider();
         const styleTag = document.getElementById('yt-custom-columns-style');
@@ -1037,7 +1037,7 @@
 
                 // 页面显示切换横排视频数滑块提示
                 const sliderVisibleNote = document.createElement('div');
-                sliderVisibleNote.textContent = '控制滑块在页面显示或隐藏，关闭后滑块仅在首页显示。';
+                sliderVisibleNote.textContent = '控制滑块在页面显示或隐藏。';
                 sliderVisibleNote.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 15px;';
 
                 // 每行视频数滑块及数值显示（始终显示，不随开关删除）
@@ -1144,6 +1144,12 @@
                         label: '显示详细统计信息',
                         defaultKey: 'd',
                         note: '模拟 Ctrl+Shift+Alt+D'
+                    },
+                    {
+                    key: 'go-home',
+                    label: '返回首页',
+                    defaultKey: 'h',
+                    note: '快捷键切换到首页'
                     }
                 ];
 
@@ -1363,6 +1369,18 @@
                         altKey: true
                     });
                     document.dispatchEvent(evt);
+                }
+            },
+            {
+                key: 'go-home',
+                defaultKey: 'h',
+                action: () => {
+                    if (window.location.pathname !== '/') {
+                        window.location.href = 'https://www.youtube.com/';
+                        console.log('[快捷键] 返回首页');
+                    } else {
+                        console.log('[快捷键] 已在首页');
+                    }
                 }
             }
         ];
