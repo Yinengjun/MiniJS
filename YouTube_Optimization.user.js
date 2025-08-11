@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 优化
 // @description  自动设置 YouTube 视频分辨率、播放速度，添加网页全屏功能，整合到控制面板，支持自动隐藏与收起。
-// @version      1.0.2
+// @version      1.0.3
 // @match        *://www.youtube.com/*
 // @grant        GM_registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/Yinengjun/MiniJS/refs/heads/main/YouTube_Optimization.user.js
@@ -26,6 +26,11 @@
     const speedOptions = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 8, 10, 16];
     let defaultQuality = localStorage.getItem('yt-default-quality') || 'hd1080';
     let defaultSpeed = parseFloat(localStorage.getItem('yt-default-speed')) || 2;
+    let videoRotation = 0;
+    
+    let webFullscreenWrapper = null;
+    let originalParent = null;
+    let originalNextSibling = null;
 
     const STORAGE_KEY_COLUMNS = 'yt_home_columns';
     const STORAGE_KEY_ENABLED = 'yt_home_columns_enabled';  
@@ -61,7 +66,7 @@
     }
 
     // 切换网页全屏
-    function toggleWebFullscreen() {
+/*     function toggleWebFullscreen() {
         const player = document.querySelector('.html5-video-player');
         if (!player) return;
 
@@ -98,6 +103,46 @@
             document.body.style.overflow = '';
             if (bg) bg.remove();
         }
+    } */
+
+    function toggleWebFullscreen() {
+        const player = document.querySelector('.html5-video-player');
+        if (!player) return;
+
+        if (!webFullscreenWrapper) {
+            // 进入网页全屏
+            originalParent = player.parentNode;
+            originalNextSibling = player.nextSibling;
+
+            webFullscreenWrapper = document.createElement('div');
+            webFullscreenWrapper.style.position = 'fixed';
+            webFullscreenWrapper.style.top = 0;
+            webFullscreenWrapper.style.left = 0;
+            webFullscreenWrapper.style.width = '100vw';
+            webFullscreenWrapper.style.height = '100vh';
+            webFullscreenWrapper.style.zIndex = 9998;
+            webFullscreenWrapper.style.background = getYouTubeTheme() === 'dark' ? '#0f0f0f' : '#f9f9f9';
+            webFullscreenWrapper.classList.add('yt-webfullscreen-wrapper');
+
+            document.body.appendChild(webFullscreenWrapper);
+            webFullscreenWrapper.appendChild(player);
+
+            document.body.style.overflow = 'hidden';
+        } else {
+            // 退出网页全屏
+            if (originalNextSibling) {
+                originalParent.insertBefore(player, originalNextSibling);
+            } else {
+                originalParent.appendChild(player);
+            }
+
+            webFullscreenWrapper.remove();
+            webFullscreenWrapper = null;
+
+            document.body.style.overflow = '';
+        }
+
+        window.dispatchEvent(new Event('resize'));
     }
 
     // 检查是否为视频页面
@@ -1150,6 +1195,12 @@
                     label: '返回首页',
                     defaultKey: 'h',
                     note: '快捷键切换到首页'
+                    },
+                    {
+                        key: 'rotate-video',
+                        label: '视频翻转',
+                        defaultKey: 'r',
+                        note: '每次顺时针旋转 90°'
                     }
                 ];
 
@@ -1380,6 +1431,19 @@
                         console.log('[快捷键] 返回首页');
                     } else {
                         console.log('[快捷键] 已在首页');
+                    }
+                }
+            },
+            {
+                key: 'rotate-video',
+                defaultKey: 'r',
+                action: () => {
+                    const video = document.querySelector('video');
+                    if (video) {
+                        videoRotation = (videoRotation + 90) % 360;
+                        video.style.transform = `rotate(${videoRotation}deg)`;
+                        video.style.transformOrigin = 'center center';
+                        console.log(`[快捷键] 视频旋转 ${videoRotation}°`);
                     }
                 }
             }
