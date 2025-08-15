@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 优化
 // @description  自动设置 YouTube 视频分辨率、播放速度，添加网页全屏功能，整合到控制面板，支持自动隐藏与收起。
-// @version      1.0.3
+// @version      1.0.4
 // @match        *://www.youtube.com/*
 // @grant        GM_registerMenuCommand
 // @updateURL    https://raw.githubusercontent.com/Yinengjun/MiniJS/refs/heads/main/YouTube_Optimization.user.js
@@ -28,9 +28,7 @@
     let defaultSpeed = parseFloat(localStorage.getItem('yt-default-speed')) || 2;
     let videoRotation = 0;
     
-    let webFullscreenWrapper = null;
-    let originalParent = null;
-    let originalNextSibling = null;
+    let playerOriginalStyle = ''; // 用于保存原始播放器样式
 
     const STORAGE_KEY_COLUMNS = 'yt_home_columns';
     const STORAGE_KEY_ENABLED = 'yt_home_columns_enabled';  
@@ -65,17 +63,52 @@
         return isDark ? 'dark' : 'light';
     }
 
+    // 获取 watch-flexy 元素
+    // 这是 YouTube 视频页面的主要容器
+    function getWatchFlexy() {
+        return document.querySelector('ytd-watch-flexy');
+    }
+
+    // 检查是否处于影院模式
+    function isTheaterMode() {
+        const wf = getWatchFlexy();
+        // YouTube 使用属性 [theater] 表示影院模式
+        return !!(wf && wf.hasAttribute('theater'));
+    }
+
+    // 切换影院模式
+    // on: true 切入影院模式，false 切回默认视图
+    function setTheaterMode(on) {
+        const wf = getWatchFlexy();
+        const btn = document.querySelector('.ytp-size-button'); // “影院/默认视图”切换键
+        if (!wf || !btn) return; // 非 watch 页或控件未渲染时直接忽略
+        if (isTheaterMode() === on) return; // 状态已一致，无需操作
+        btn.click();
+    }
+
     // 切换网页全屏
-/*     function toggleWebFullscreen() {
+    function toggleWebFullscreen() {
         const player = document.querySelector('.html5-video-player');
         if (!player) return;
 
         const bgId = 'webfullscreen-bg';
         let bg = document.getElementById(bgId);
 
+        // 使用 data 属性记录进入前是否处于影院模式
+        if (!player.dataset.wasTheater) {
+            player.dataset.wasTheater = String(isTheaterMode());
+        }
+
         player.classList.toggle('webfullscreen');
 
         if (player.classList.contains('webfullscreen')) {
+            // 进入网页全屏：强制切到影院模式
+            setTheaterMode(true);
+
+            // 保存原始样式
+            playerOriginalStyle = player.getAttribute('style') || '';
+
+            // 铺满窗口
             player.style.position = 'fixed';
             player.style.top = 0;
             player.style.left = 0;
@@ -85,64 +118,34 @@
             document.body.style.overflow = 'hidden';
 
             if (!bg) {
-                bg = document.createElement('div');
-                bg.id = bgId;
-                bg.style.position = 'fixed';
-                bg.style.top = 0;
-                bg.style.left = 0;
-                bg.style.width = '100vw';
-                bg.style.height = '100vh';
-                bg.style.zIndex = 9997;
-                bg.style.backgroundColor = getYouTubeTheme() === 'dark' ? '#0f0f0f' : '#f9f9f9';
-                document.body.appendChild(bg);
+            bg = document.createElement('div');
+            bg.id = bgId;
+            bg.style.position = 'fixed';
+            bg.style.top = 0;
+            bg.style.left = 0;
+            bg.style.width = '100vw';
+            bg.style.height = '100vh';
+            bg.style.zIndex = 9997;
+            bg.style.backgroundColor = getYouTubeTheme() === 'dark' ? '#0f0f0f' : '#f9f9f9';
+            document.body.appendChild(bg);
             }
-
             window.dispatchEvent(new Event('resize'));
         } else {
-            player.removeAttribute('style');
-            document.body.style.overflow = '';
-            if (bg) bg.remove();
-        }
-    } */
+            // 退出网页全屏：恢复进入前的影院/默认视图状态
+            setTheaterMode(player.dataset.wasTheater === 'true');
+            player.dataset.wasTheater = ''; // 清空标记，避免跨页面污染
 
-    function toggleWebFullscreen() {
-        const player = document.querySelector('.html5-video-player');
-        if (!player) return;
-
-        if (!webFullscreenWrapper) {
-            // 进入网页全屏
-            originalParent = player.parentNode;
-            originalNextSibling = player.nextSibling;
-
-            webFullscreenWrapper = document.createElement('div');
-            webFullscreenWrapper.style.position = 'fixed';
-            webFullscreenWrapper.style.top = 0;
-            webFullscreenWrapper.style.left = 0;
-            webFullscreenWrapper.style.width = '100vw';
-            webFullscreenWrapper.style.height = '100vh';
-            webFullscreenWrapper.style.zIndex = 9998;
-            webFullscreenWrapper.style.background = getYouTubeTheme() === 'dark' ? '#0f0f0f' : '#f9f9f9';
-            webFullscreenWrapper.classList.add('yt-webfullscreen-wrapper');
-
-            document.body.appendChild(webFullscreenWrapper);
-            webFullscreenWrapper.appendChild(player);
-
-            document.body.style.overflow = 'hidden';
-        } else {
-            // 退出网页全屏
-            if (originalNextSibling) {
-                originalParent.insertBefore(player, originalNextSibling);
+            // 恢复原始样式
+            if (playerOriginalStyle) {
+            player.setAttribute('style', playerOriginalStyle);
             } else {
-                originalParent.appendChild(player);
+            player.removeAttribute('style');
             }
 
-            webFullscreenWrapper.remove();
-            webFullscreenWrapper = null;
-
             document.body.style.overflow = '';
+            if (bg) bg.remove();
+            window.dispatchEvent(new Event('resize'));
         }
-
-        window.dispatchEvent(new Event('resize'));
     }
 
     // 检查是否为视频页面
